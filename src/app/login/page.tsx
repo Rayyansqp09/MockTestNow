@@ -4,9 +4,121 @@ import { motion } from "framer-motion";
 import { BrainCircuit, ExternalLink, Mail } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+
 
 export default function LoginPage() {
+  const supabase = createClient();
+  const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    setSuccess("");
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/dashboard`,
+      },
+    });
+
+    if (error) {
+      setError(getFriendlyError(error.message));
+    }
+  };
+
+
+
+  const isStrongPassword = (password: string) => {
+    return (
+      password.length >= 8 &&
+      /[A-Z]/.test(password) &&
+      /[a-z]/.test(password) &&
+      /[0-9]/.test(password) &&
+      /[^A-Za-z0-9]/.test(password)
+    );
+  };
+
+  const getFriendlyError = (message: string) => {
+    const msg = message.toLowerCase();
+
+    if (msg.includes("password")) {
+      return "Password does not meet the required criteria.";
+    }
+
+    if (msg.includes("too many requests") || msg.includes("rate limit")) {
+      return "Too many attempts. Please wait a while and try again.";
+    }
+
+    if (msg.includes("already registered") || msg.includes("user already exists")) {
+      return "This email is already registered.";
+    }
+
+    if (msg.includes("invalid login credentials")) {
+      return "Invalid email or password.";
+    }
+
+    return message;
+  };
+
+  const handleAuth = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      if (!isLogin && !isStrongPassword(password)) {
+        setError("Password must contain 8+ chars, uppercase, lowercase, number, and symbol");
+        return;
+      }
+
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          setError(getFriendlyError(error.message));
+          return;
+        }
+
+        router.push("/dashboard");
+
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/login`,
+            data: {
+              full_name: name,
+            },
+          },
+        });
+
+        if (error) {
+          setError(getFriendlyError(error.message));
+          return;
+        }
+
+        setSuccess("Verification email sent. Please check your inbox.");
+        setIsLogin(true);
+      }
+
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row absolute inset-0 z-50 bg-background">
@@ -61,26 +173,93 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             {!isLogin && (
+
               <div className="space-y-2">
                 <label className="text-sm font-semibold">Full Name</label>
-                <input type="text" placeholder="John Doe" className="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-primary rounded-xl px-4 py-3 text-sm outline-none transition-all" />
+
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="John Doe"
+                  className="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-primary rounded-xl px-4 py-3 text-sm outline-none transition-all"
+                />
               </div>
+
             )}
             <div className="space-y-2">
               <label className="text-sm font-semibold">Email</label>
-              <input type="email" placeholder="you@example.com" className="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-primary rounded-xl px-4 py-3 text-sm outline-none transition-all" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-primary rounded-xl px-4 py-3 text-sm outline-none transition-all" />
             </div>
+
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-semibold">Password</label>
-                {isLogin && <Link href="#" className="text-xs text-primary font-semibold hover:underline">Forgot password?</Link>}
+
+                {isLogin && (
+                  <Link
+                    href="#"
+                    className="text-xs text-primary font-semibold hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                )}
               </div>
-              <input type="password" placeholder="••••••••" className="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-primary rounded-xl px-4 py-3 text-sm outline-none transition-all" />
+
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-primary rounded-xl px-4 py-3 text-sm outline-none transition-all"
+              />
+
+              {!isLogin && (
+                <div className="text-xs space-y-1 mt-2">
+                  <p className={password.length >= 8 ? "text-green-500" : "text-red-500"}>
+                    • Minimum 8 characters
+                  </p>
+
+                  <p className={/[A-Z]/.test(password) ? "text-green-500" : "text-red-500"}>
+                    • At least one uppercase letter
+                  </p>
+
+                  <p className={/[a-z]/.test(password) ? "text-green-500" : "text-red-500"}>
+                    • At least one lowercase letter
+                  </p>
+
+                  <p className={/[0-9]/.test(password) ? "text-green-500" : "text-red-500"}>
+                    • At least one number
+                  </p>
+
+                  <p className={/[^A-Za-z0-9]/.test(password) ? "text-green-500" : "text-red-500"}>
+                    • At least one special character
+                  </p>
+                </div>
+              )}
             </div>
 
-            <Link href="/dashboard" className="block w-full bg-primary text-white text-center py-3 rounded-xl font-bold shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all mt-6">
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 px-4 py-3 text-sm text-green-600 dark:text-green-400">
+                {success}
+              </div>
+            )}
+
+            <button
+              onClick={handleAuth}
+              className="block w-full bg-primary text-white text-center py-3 rounded-xl font-bold shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all mt-6"
+            >
               {isLogin ? "Sign In" : "Sign Up"}
-            </Link>
+            </button>
           </div>
 
           <div className="relative flex items-center py-4">
@@ -89,8 +268,11 @@ export default function LoginPage() {
             <div className="flex-grow border-t border-border"></div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <button className="flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-semibold text-sm">
+          <div className="flex justify-center mt-0">
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              className="justify-self-center flex items-center justify-center  gap-2 px-8 py-2.5 mt-0 border border-border rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-semibold text-sm">
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
@@ -99,10 +281,11 @@ export default function LoginPage() {
               </svg>
               Google
             </button>
-            <button className="flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-semibold text-sm">
+
+            {/* <button className="flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-semibold text-sm">
               <ExternalLink className="w-5 h-5" />
               GitHub
-            </button>
+            </button> */}
           </div>
 
           <p className="text-center text-sm text-foreground/60 mt-8">
